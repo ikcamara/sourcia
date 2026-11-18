@@ -164,4 +164,12 @@ def create_app(config: str | None = None, ctx=None) -> FastAPI:
         write(form, ctx, form_dir, reprendre=folder)
         return stats
 
+    from sourcia.api.dossiers import create_dossiers_router
+
+    app.include_router(create_dossiers_router(ctx))
+
+    @app.get("/dossiers", response_class=HTMLResponse)
+    def teacher_folders():
+        return (STATIC / "dossiers.html").read_text(encoding="utf-8")
+
     return app
