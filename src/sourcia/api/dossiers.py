@@ -267,7 +267,9 @@ def create_dossiers_router(ctx):
         if docs and all(doc["status"] in ("pret", "erreur") for doc in docs):
             errors = sum(doc["status"] == "erreur" for doc in docs)
             notification = f"Traitement terminé. {len(docs) - errors} document(s) prêt(s), {errors} en erreur."
+        selected = [doc for doc in docs if doc["selected"]]
         return {"id": folder_id, "title": folder["title"], "role": folder["role"], "documents": result,
+                "export_disponible": bool(selected) and all(doc["status"] == "pret" for doc in selected),
                 "shares": shares, "notification": notification,
                 "en_cours": any(doc["status"] in ("en_attente", "traitement") for doc in docs)}
 

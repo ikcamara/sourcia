@@ -45,12 +45,18 @@ def test_private_folder_workflow(demo_ctx, monkeypatch):
     owner = {"Authorization": f"Bearer {owner_token}"}
     guest = {"Authorization": f"Bearer {guest_token}"}
     client = TestClient(create_app(ctx=demo_ctx))
-    assert client.get("/dossiers").status_code == 200
+    home = client.get("/")
+    assert 'href="/dossiers"' not in home.text
+    for page in (home, client.get("/dossiers")):
+        assert page.status_code == 200
+        assert 'href="/assets/sourcia.css"' in page.text
+    assert client.get("/assets/sourcia.css").headers["content-type"].startswith("text/css")
     assert client.get("/api/dossiers").status_code == 401
     created = client.post("/api/dossiers", headers=owner, json={})
     assert created.status_code == 201
     assert created.json()["title"].startswith("Dossier pédagogique")
     folder = "/api/dossiers/" + created.json()["id"]
+    assert not client.get(folder, headers=owner).json()["export_disponible"]
     assert client.get(folder, headers=guest).status_code == 404
     assert client.get(folder + "/export.zip", headers=guest).status_code == 404
 
@@ -63,6 +69,7 @@ def test_private_folder_workflow(demo_ctx, monkeypatch):
     detail = client.get(folder, headers=owner).json()
     assert detail["documents"][0]["status"] == "pret"
     assert detail["notification"]
+    assert detail["export_disponible"]
     assert client.get(folder + "?q=parcelle", headers=owner).json()["documents"]
     corpus = client.get(folder + "/corpus", headers=owner).json()["documents"]
     assert "Luzerne" in corpus[0]["pages"][0]["texte"]

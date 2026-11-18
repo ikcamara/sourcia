@@ -70,6 +70,10 @@ def create_app(config: str | None = None, ctx=None) -> FastAPI:
             raise HTTPException(404, "fichier introuvable")
         return p
 
+    @app.get("/assets/sourcia.css", include_in_schema=False)
+    def stylesheet():
+        return FileResponse(STATIC / "sourcia.css", media_type="text/css")
+
     @app.get("/", response_class=HTMLResponse)
     def home():
         return (STATIC / "index.html").read_text(encoding="utf-8")

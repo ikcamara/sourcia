@@ -4,25 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Dossiers pédagogiques · SourcIA</title>
-<style>
-:root{font-family:system-ui,sans-serif;color:#18261f;background:#f4f6f0}
-body{max-width:1050px;margin:auto;padding:24px}
-header,section{margin-bottom:20px}
-section{background:white;border:1px solid #d6ded4;border-radius:12px;padding:18px}
-h1,h2,h3{margin-top:0}
-form,.controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0}
-input,select,button{font:inherit;padding:8px 10px;border:1px solid #758778;border-radius:6px}
-button{background:#23513b;color:white;cursor:pointer}
-button:disabled{opacity:.55;cursor:default}
-a{color:#23513b}
-li{padding:6px 0}
-#message{min-height:1.5em}
-#message[data-error=true]{color:#9c241c}
-[hidden]{display:none!important}
-</style>
+<link rel="stylesheet" href="/assets/sourcia.css">
 </head>
-<body>
-<header><a href="/">SourcIA</a><h1>Dossiers pédagogiques</h1></header>
+<body class="folders">
+<header class="page-header"><div class="header-content">
+  <a href="/">SourcIA</a>
+  <h1>Dossiers pédagogiques</h1>
+</div></header>
+<main>
 <form id="login">
   <label>Jeton enseignant <input id="token" type="password" required autocomplete="off"></label>
   <button>Accéder à mes dossiers</button>
@@ -35,8 +24,10 @@ li{padding:6px 0}
       <label>Nom (facultatif) <input name="title" maxlength="200"></label>
       <button>Créer un dossier</button>
     </form>
-    <label>Dossier ouvert <select id="folders"></select></label>
-    <button id="logout" type="button">Se déconnecter</button>
+    <div class="folder-actions">
+      <label>Dossier ouvert <select id="folders"></select></label>
+      <button id="logout" class="secondary" type="button">Se déconnecter</button>
+    </div>
   </section>
   <div id="detail" hidden>
     <section id="imports">
@@ -58,7 +49,7 @@ li{padding:6px 0}
       <ul id="documents"></ul>
       <h3>Connaissances du corpus sélectionné</h3>
       <ul id="summary"></ul>
-      <button type="button" id="zip">Télécharger la sélection en ZIP</button>
+      <button type="button" id="zip" disabled>Télécharger la sélection en ZIP</button>
     </section>
     <section id="sharing">
       <h2>Partage du dossier</h2>
@@ -71,6 +62,7 @@ li{padding:6px 0}
     </section>
   </div>
 </div>
+</main>
 <script>
 'use strict';
 const byId = id => document.getElementById(id);
@@ -79,6 +71,8 @@ let token = '';
 let folder = '';
 let timer;
 let revision = 0;
+let exportInProgress = false;
+let exportAvailable = false;
 
 function message(text, error = false) {
   byId('message').textContent = text;
@@ -148,20 +142,31 @@ async function loadFolders(preferred) {
 async function loadDetail() {
   clearTimeout(timer);
   const current = ++revision;
-  byId('detail').hidden = !folder;
-  if (!folder) return;
+  if (!folder) {
+    byId("detail").hidden = true;
+    return;
+  }
   const url = base + '/' + folder;
   const filters = new URLSearchParams(new FormData(byId('filters')));
   const [data, corpus] = await Promise.all([json(url + '?' + filters), json(url + '/corpus?texte=false')]);
   if (current !== revision) return;
+  byId("detail").hidden = false;
+  exportAvailable = data.export_disponible;
+  byId("zip").disabled = exportInProgress || !exportAvailable;
   const editable = data.role !== 'lecture';
   byId('imports').hidden = !editable;
   byId('sharing').hidden = data.role !== 'proprietaire';
-  byId('notification').textContent = data.notification || '';
+  byId("notification").textContent = data.notification || (data.en_cours ? "Traitement des documents en cours…" : "");
   byId('shares').replaceChildren(...data.shares.map(share => item(share.email + ' · ' + share.role)));
   const statuses = {en_attente: 'en attente', traitement: 'en cours', pret: 'prêt', erreur: 'erreur'};
   byId('documents').replaceChildren(...data.documents.map(doc => {
-    const li = item(doc.title + ' · ' + statuses[doc.status] + (doc.error ? ' · ' + doc.error : ''));
+    const li = item(doc.title);
+    const badge = document.createElement("span");
+    badge.className = "document-status";
+    badge.dataset.status = doc.status;
+    badge.textContent = statuses[doc.status];
+    li.append(badge);
+    if (doc.error) li.append(" · " + doc.error);
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = doc.selected;
@@ -188,11 +193,13 @@ async function loadDetail() {
     }
     return li;
   }));
+  if (!data.documents.length) byId("documents").append(item("Aucun document ne correspond à cette vue."));
   byId('summary').replaceChildren(...corpus.documents.map(doc => {
     const fiche = doc.fiche || {};
     const details = [fiche.resume, ...(fiche.themes || []), fiche.type?.value].filter(Boolean);
     return item(doc.title + (details.length ? ' · ' + details.join(' · ') : ''));
   }));
+  if (!corpus.documents.length) byId("summary").append(item("Aucun document prêt dans la sélection."));
   if (data.en_cours) timer = setTimeout(() => loadDetail().catch(error => message(error.message, true)), 2000);
 }
 
@@ -228,6 +235,8 @@ submit('create', async data => {
 
 byId('folders').onchange = () => {
   folder = byId('folders').value;
+  byId("detail").hidden = true;
+  byId("notification").textContent = "";
   byId('results').replaceChildren();
   byId('documents').replaceChildren();
   byId('summary').replaceChildren();
@@ -267,6 +276,8 @@ submit('share', async data => {
 });
 
 byId('zip').onclick = async () => {
+  exportInProgress = true;
+  byId("zip").disabled = true;
   try {
     const response = await request(base + '/' + folder + '/export.zip');
     const url = URL.createObjectURL(await response.blob());
@@ -277,6 +288,9 @@ byId('zip').onclick = async () => {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (error) {
     message(error.message, true);
+  } finally {
+    exportInProgress = false;
+    byId("zip").disabled = !exportAvailable;
   }
 };
 </script>
