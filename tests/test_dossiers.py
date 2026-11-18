@@ -46,7 +46,7 @@ def test_private_folder_workflow(demo_ctx, monkeypatch):
     guest = {"Authorization": f"Bearer {guest_token}"}
     client = TestClient(create_app(ctx=demo_ctx))
     home = client.get("/")
-    assert 'href="/dossiers"' not in home.text
+    assert 'href="/dossiers">Mes dossiers pédagogiques</a>' in home.text
     for page in (home, client.get("/dossiers")):
         assert page.status_code == 200
         assert 'href="/assets/sourcia.css"' in page.text
